@@ -40,7 +40,7 @@ Thumbs.db
 *.json
 
 # Text files
-formatted_slack_messages.txt
+*.txt
 
 # Node.js
 node_modules/
