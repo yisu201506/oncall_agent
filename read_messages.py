@@ -71,12 +71,32 @@ def fetch_slack_messages():
         print(f"Error fetching Slack messages: {e.response['error']}")
         return False
 
+def get_message_permalink(channel_id, message_ts):
+    """Get the permalink URL for a Slack message"""
+    try:
+        response = slack_client.chat_getPermalink(
+            channel=channel_id,
+            message_ts=message_ts
+        )
+        if response["ok"]:
+            return response["permalink"]
+        return None
+    except SlackApiError as e:
+        print(f"Error getting permalink: {e.response['error']}")
+        return None
+
 def process_slack_messages():
     """Process messages and store embeddings in ChromaDB"""
     try:
         # Read the existing JSON file
         with open("slack_messages.json", "r") as f:
             messages = json.load(f)
+        
+        # Get the target channel ID
+        channels = slack_client.conversations_list(types="public_channel")
+        target_channel = next(channel for channel in channels["channels"] 
+                            if channel["name"] == CHANNEL_NAME)
+        channel_id = target_channel["id"]
         
         # Create or get ChromaDB collection
         collection = chroma_client.get_or_create_collection(name="slack_messages")
@@ -86,15 +106,12 @@ def process_slack_messages():
         
         # Process each message
         formatted_messages = []
+        message_permalinks = []  # List to store permalinks
         for idx, message in enumerate(messages):
             message_id = message['ts']
             
-            # Get existing message if it exists
-            existing_message = None
-            if message_id in existing_ids:
-                existing_result = collection.get(ids=[message_id])
-                if existing_result['documents']:
-                    existing_message = existing_result['documents'][0]
+            # Get message permalink
+            message_permalink = get_message_permalink(channel_id, message_id)
             
             # Format main message and thread replies
             formatted_message = f"|<message_start>| {message['text']} |<message_end>|"
@@ -105,14 +122,21 @@ def process_slack_messages():
                     formatted_message += f" |<thread_start>| {reply['text']} |<thread_end>|"
             
             # Skip if message and its threads haven't changed
-            if existing_message and existing_message == formatted_message:
-                print(f"Skipping unchanged message {message_id}")
-                continue
-                
+            if message_id in existing_ids:
+                existing_result = collection.get(ids=[message_id])
+                if existing_result['documents'] and existing_result['documents'][0] == formatted_message:
+                    print(f"Skipping unchanged message {message_id}")
+                    continue
+            
             formatted_messages.append(formatted_message)
+            # Store the permalink in the list
+            message_permalinks.append(message_permalink if message_permalink else "No permalink available")
             
             # Get embedding for new/updated message
             embedding = get_embedding(formatted_message)
+            
+            # Create metadata dictionary with permalink
+            metadata = {"url": message_permalink, "type": "slack"} if message_permalink else {}
             
             # Update or add to ChromaDB
             if message_id in existing_ids:
@@ -120,6 +144,7 @@ def process_slack_messages():
                 collection.update(
                     documents=[formatted_message],
                     embeddings=[embedding],
+                    metadatas=[metadata],
                     ids=[message_id]
                 )
             else:
@@ -127,13 +152,16 @@ def process_slack_messages():
                 collection.add(
                     documents=[formatted_message],
                     embeddings=[embedding],
+                    metadatas=[metadata],
                     ids=[message_id]
                 )
         
         # Append new formatted messages to text file
         with open("formatted_slack_messages.txt", "a") as f:
             if formatted_messages:  # Only write if there are new messages
-                f.write("\n".join(formatted_messages) + "\n")
+                # Write messages and their permalinks
+                for message, permalink in zip(formatted_messages, message_permalinks):
+                    f.write(f"{message}\nURI: {permalink}\n\n")
                 print(f"Added {len(formatted_messages)} new messages to formatted_slack_messages.txt")
             else:
                 print("No new messages to add")

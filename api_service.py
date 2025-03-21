@@ -22,6 +22,7 @@ class QueryRequest(BaseModel):
 class MessageResponse(BaseModel):
     message: str
     similarity: float
+    metadata: Optional[dict] = None
 
 @app.get("/")
 async def root():
@@ -56,23 +57,37 @@ async def query_messages(request: QueryRequest):
         )
         query_embedding = response.data[0].embedding
 
-        # Query the collection
+        # Query the collection with include=['metadatas']
         results = collection.query(
             query_embeddings=[query_embedding],
-            n_results=request.n_results
+            n_results=request.n_results,
+            include=['metadatas', 'distances', 'documents']  # Be explicit about what we want
         )
 
-        # Format results
+        # Add debug logging
+        print("ChromaDB Query Results:", results)
+
+        # Format results with safety checks
         messages = []
-        for idx, (doc, distance) in enumerate(zip(results['documents'][0], results['distances'][0])):
+        documents = results.get('documents', [[]])[0]
+        distances = results.get('distances', [[]])[0]
+        metadatas = results.get('metadatas', [[]])[0]
+
+        # Ensure we have matching lengths
+        n = min(len(documents), len(distances), len(metadatas))
+        
+        for i in range(n):
             messages.append(MessageResponse(
-                message=doc,
-                similarity=1 - distance  # Convert distance to similarity score
+                message=documents[i],
+                similarity=1 - distances[i],  # Convert distance to similarity score
+                metadata=metadatas[i] if metadatas[i] is not None else {}  # Handle None metadata
             ))
 
         return messages
 
     except Exception as e:
+        # Add more detailed error logging
+        print(f"Error in query_messages: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
