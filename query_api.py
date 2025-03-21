@@ -30,7 +30,6 @@ def query_database(query_text: str, n_results: int = 5, api_url: str = "http://l
         response.raise_for_status()
         
         results = response.json()
-        print("API Response:", json.dumps(results, indent=2))  # Add this line for debugging
         
         # Extract metadata from the response if available
         for result in results:
