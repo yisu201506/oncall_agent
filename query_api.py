@@ -1,26 +1,24 @@
 import requests
 import json
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from pydantic import BaseModel
 import argparse
+from openai import OpenAI
 
 class MessageResponse(BaseModel):
     message: str
     similarity: float
-    slack_url: Optional[str] = None
+    metadata: Optional[dict] = None
 
-def query_database(query_text: str, n_results: int = 5, api_url: str = "http://localhost:8000") -> List[MessageResponse]:
-    """
-    Query the vector database for similar messages.
-    
-    Args:
-        query_text (str): The text to search for
-        n_results (int): Number of results to return
-        api_url (str): Base URL of the API
-        
-    Returns:
-        List[MessageResponse]: List of messages and their similarity scores and URLs
-    """
+def get_no_information_response() -> str:
+    """Return the standard response when no relevant information is found."""
+    return ("No relevant information was found in the existing documentation. "
+            "Please either:\n"
+            "1. File a new ticket to document this information, or\n"
+            "2. Start a new Slack thread to discuss this topic.")
+
+def query_database(query_text: str, n_results: int = 10, similarity_threshold: float = 0.6, api_url: str = "http://localhost:8000") -> List[MessageResponse]:
+    """Query the vector database for similar messages with similarity threshold."""
     try:
         response = requests.post(
             f"{api_url}/query",
@@ -31,83 +29,94 @@ def query_database(query_text: str, n_results: int = 5, api_url: str = "http://l
         
         results = response.json()
         
-        # Extract metadata from the response if available
-        for result in results:
-            if "metadata" in result and result["metadata"]:
-                # Add the Slack URL from metadata if it exists
-                if "url" in result["metadata"]:
-                    result["slack_url"] = result["metadata"]["url"]
-        return [MessageResponse(**result) for result in results]
-    
-    except requests.exceptions.ConnectionError:
-        print("Error: Could not connect to the API. Make sure the API server is running (python api_service.py)")
-        return []
+        # Filter results by similarity threshold
+        filtered_results = [
+            MessageResponse(**result) 
+            for result in results 
+            if result["similarity"] >= similarity_threshold
+        ]
+        
+        return filtered_results
     except Exception as e:
         print(f"Error querying database: {str(e)}")
         return []
 
-def print_results(results: List[MessageResponse], show_similarity: bool = True):
-    """Pretty print the query results"""
-    if not results:
-        print("No results found.")
-        return
-        
-    print("\nResults:")
-    print("-" * 80)
-    for i, result in enumerate(results, 1):
-        # Clean up the message by removing the markers
-        clean_message = (result.message
-            .replace("|<message_start>|", "")
-            .replace("|<message_end>|", "")
-            .replace("|<thread_start>|", "\n  └─ ")
-            .replace("|<thread_end>|", "")
-            .strip())
-            
-        print(f"\n{i}. Message:")
-        print(f"{clean_message}")
-        if result.slack_url:
-            print(f"   Slack URL: {result.slack_url}")
-        if show_similarity:
-            print(f"   Similarity: {result.similarity:.2%}")
-    print("-" * 80)
+def get_llm_response(query: str, context_messages: List[MessageResponse]) -> Tuple[str, List[str]]:
+    """Get LLM response based on query and context."""
+    # If no messages above threshold, return standard response
+    if not context_messages:
+        return get_no_information_response(), []
 
-def check_api_status(api_url: str = "http://localhost:8000") -> bool:
-    """Check if the API is running"""
-    try:
-        response = requests.get(api_url)
-        return response.status_code == 200
-    except:
-        return False
+    client = OpenAI()
+    
+    # Prepare context from retrieved messages
+    context = "\n\n".join([
+        f"Document {i+1}:\n{msg.message}" 
+        for i, msg in enumerate(context_messages)
+    ])
+    
+    # Collect URLs
+    urls = [
+        msg.metadata.get("url", "No URL available") 
+        for msg in context_messages 
+        if msg.metadata
+    ]
+    
+    # Create the system message and user prompt
+    system_message = """
+    You are a helpful assistant. Please answer the query based on the provided context documents. 
+    If the context doesn't contain relevant information, say so, and ask the user to file a new ticket or start a new Slack thread.
+    """
+    user_prompt = f"Query: {query}\n\nContext:\n{context}"
+    
+    # Get completion from OpenAI
+    response = client.chat.completions.create(
+        model="gpt-4",  # or your preferred model
+        messages=[
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": user_prompt}
+        ]
+    )
+    
+    return response.choices[0].message.content, urls
 
 def main():
-    parser = argparse.ArgumentParser(description="Query the vector database for similar Slack messages")
+    parser = argparse.ArgumentParser(description="Query the vector database and get LLM response")
     parser.add_argument("--query", "-q", 
                        help="The text to search for",
-                       default="Who is awesome?",  # Makes it optional with a default value
-                       nargs='?')     # Makes it accept 0 or 1 argument
+                       default=None,
+                       nargs='?')
     parser.add_argument("-n", "--num-results", 
                        type=int, 
-                       default=5, 
-                       help="Number of results to return (default: 5)")
-    parser.add_argument("--no-similarity", 
-                       action="store_true", 
-                       help="Don't show similarity scores")
+                       default=10, 
+                       help="Number of results to return (default: 10)")
+    parser.add_argument("--threshold", 
+                       type=float, 
+                       default=0.6,
+                       help="Similarity threshold (default: 0.6)")
     args = parser.parse_args()
-
-    # Check if API is running
-    if not check_api_status():
-        print("Error: API is not running. Please start it with 'python api_service.py'")
-        return
 
     # If no query provided, prompt the user
     if args.query is None:
         args.query = input("Enter your search query: ")
 
     # Query the database
-    results = query_database(args.query, args.num_results)
+    results = query_database(args.query, args.num_results, args.threshold)
+    
+    # Get LLM response
+    llm_response, urls = get_llm_response(args.query, results)
     
     # Print results
-    print_results(results, show_similarity=not args.no_similarity)
+    print("\nAI Response:")
+    print("-" * 80)
+    print(llm_response)
+    
+    # Only print sources section if there are URLs
+    if urls:
+        print("\nRelevant Sources:")
+        print("-" * 80)
+        for url in urls:
+            print(f"- {url}")
 
 if __name__ == "__main__":
     main() 
