@@ -44,6 +44,11 @@ async def get_stats():
 async def query_messages(request: QueryRequest):
     """Query similar messages from the vector database"""
     try:
+        # Completely reinitialize ChromaDB client and collection
+        global chroma_client, collection
+        chroma_client = chromadb.PersistentClient(path="chroma_db")
+        collection = chroma_client.get_or_create_collection(name="slack_messages")
+        
         # Get embedding for query text
         response = client.embeddings.create(
             model="text-embedding-ada-002",

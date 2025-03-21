@@ -89,12 +89,14 @@ def process_slack_messages():
         for idx, message in enumerate(messages):
             message_id = message['ts']
             
-            # Skip if message already processed
+            # Get existing message if it exists
+            existing_message = None
             if message_id in existing_ids:
-                print(f"Skipping already processed message {message_id}")
-                continue
-                
-            # Format main message
+                existing_result = collection.get(ids=[message_id])
+                if existing_result['documents']:
+                    existing_message = existing_result['documents'][0]
+            
+            # Format main message and thread replies
             formatted_message = f"|<message_start>| {message['text']} |<message_end>|"
             
             # Format thread replies
@@ -102,23 +104,31 @@ def process_slack_messages():
                 for reply in message['thread_replies']:
                     formatted_message += f" |<thread_start>| {reply['text']} |<thread_end>|"
             
+            # Skip if message and its threads haven't changed
+            if existing_message and existing_message == formatted_message:
+                print(f"Skipping unchanged message {message_id}")
+                continue
+                
             formatted_messages.append(formatted_message)
             
-            # Get embedding for new message
+            # Get embedding for new/updated message
             embedding = get_embedding(formatted_message)
             
-            # Log processing details
-            print(f"Processing new message {message_id}")
-            print(f"Message: {formatted_message[:100]}...")
-            print(f"Embedding shape: {len(embedding)}")
-            print(f"Embedding sample: {embedding[:5]}...")
-            
-            # Store in ChromaDB
-            collection.add(
-                documents=[formatted_message],
-                embeddings=[embedding],
-                ids=[message_id]
-            )
+            # Update or add to ChromaDB
+            if message_id in existing_ids:
+                print(f"Updating message {message_id} with new content")
+                collection.update(
+                    documents=[formatted_message],
+                    embeddings=[embedding],
+                    ids=[message_id]
+                )
+            else:
+                print(f"Adding new message {message_id}")
+                collection.add(
+                    documents=[formatted_message],
+                    embeddings=[embedding],
+                    ids=[message_id]
+                )
         
         # Append new formatted messages to text file
         with open("formatted_slack_messages.txt", "a") as f:
