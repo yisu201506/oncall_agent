@@ -71,17 +71,35 @@ SLACK_APP_TOKEN=xapp-your-app-token    # From Socket Mode
 
 **Important Note**: If you ever accidentally expose these tokens, immediately rotate them in your Slack App settings.
 
-## Running the System
+## Setup and Running
+
+### Environment Variables
+Make sure to set up your environment variables in a `.env` file:
+```env
+SLACK_BOT_TOKEN=xoxb-your-bot-token
+SLACK_APP_TOKEN=xapp-your-app-token
+OPENAI_API_KEY=your-openai-key
+```
+
+### Running the Services
 
 1. Start the API Server:
 ```bash
-python query_api.py
+python api_service.py
 ```
-The server will start on http://localhost:8000
+The API server will run on `http://localhost:8000`
 
-2. In a new terminal, start the Slack Bot:
+2. Run the Slack Bot:
 ```bash
 python slack_bot.py
+```
+
+The bot will connect to Slack using Socket Mode and respond to mentions in channels it's invited to.
+
+### Optional: Processing Messages
+To process and index messages from a Slack channel:
+```bash
+python read_messages.py
 ```
 
 ## Using the System
