@@ -12,6 +12,11 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
+# get the threshold and n_results 
+THRESHOLD = 0.6
+N_RESULTS = 10
+
+
 # Get tokens with error checking
 SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")
 SLACK_APP_TOKEN = os.getenv("SLACK_APP_TOKEN")
@@ -38,7 +43,7 @@ def handle_mention(event, say):
         message_text = text.split(">", 1)[1].strip() if ">" in text else text
         
         # Query the database
-        results = query_database(message_text)
+        results = query_database(message_text, n_results=N_RESULTS, similarity_threshold=THRESHOLD)
         
         # Get LLM response
         llm_response, urls = get_llm_response(message_text, results)
