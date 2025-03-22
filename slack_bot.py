@@ -1,8 +1,9 @@
 import os
+import re
+import logging
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from query_api import query_database, get_llm_response
-import logging
 from dotenv import load_dotenv
 
 # Set up logging
@@ -40,8 +41,10 @@ def handle_mention(event, say):
         thread_ts = event["ts"]
         
         # Remove the <@BOT_ID> from the text
-        message_text = text.split(">", 1)[1].strip() if ">" in text else text
-        
+        # First, find the bot mention pattern like <@U08J7EG7FDM>
+        bot_mention_pattern = re.compile(r'<@[A-Z0-9]+>')
+        message_text = re.sub(bot_mention_pattern, '', text).strip()
+
         # Query the database
         results = query_database(message_text, n_results=N_RESULTS, similarity_threshold=THRESHOLD)
         
