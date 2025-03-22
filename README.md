@@ -1,20 +1,95 @@
-# Oncall Agent
+# Documentation Query System with Slack Integration
 
-A Python-based oncall agent for managing and automating oncall responsibilities.
+This system consists of two main components:
+1. A Vector Database API Server
+2. A Slack Bot that queries the database and responds to user questions
 
-## Setup
+## Prerequisites
 
-1. Clone the repository
-2. Create a virtual environment: `python -m venv venv`
-3. Activate the virtual environment:
-   - On Unix/macOS: `source venv/bin/activate`
-   - On Windows: `.\venv\Scripts\activate`
-4. Install dependencies: `pip install -r requirements.txt`
-5. Set up environment variables:
-   ```bash
-   export OPENAI_API_KEY="your-openai-api-key"
-   export SLACK_TOKEN="your-slack-token"
-   ```
+- Python 3.8 or higher
+- pip (Python package manager)
+- A Slack workspace where you can create apps
+- OpenAI API key
+
+## Installation
+
+1. Clone the repository:
+```bash
+git clone <your-repository-url>
+cd <repository-directory>
+```
+
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+3. Set up environment variables by creating a `.env` file:
+```bash
+# API Server settings
+OPENAI_API_KEY=your_openai_api_key
+
+# Slack Bot settings
+SLACK_BOT_TOKEN=xoxb-your-bot-token
+SLACK_APP_TOKEN=xapp-your-app-token
+```
+
+## Setting up the Slack App
+
+1. Go to [api.slack.com/apps](https://api.slack.com/apps)
+2. Click "Create New App" → "From scratch"
+3. Name your app and select your workspace
+
+4. Enable Socket Mode:
+   - In the left sidebar, click on "Socket Mode"
+   - Toggle "Enable Socket Mode" to ON
+   - Click "Generate Token"
+   - Give it a name (e.g., "socket-token")
+   - This generates your `SLACK_APP_TOKEN` (starts with `xapp-`)
+   - Save this token immediately - you'll need it for your `.env` file
+
+5. Under "OAuth & Permissions":
+   - Add these Bot Token Scopes:
+     - `chat:write`
+     - `app_mentions:read`
+   - Install the app to your workspace
+   - Save the Bot User OAuth Token (starts with `xoxb-`) - this is your `SLACK_BOT_TOKEN`
+
+6. Under "Event Subscriptions":
+   - Enable Events
+   - Subscribe to `app_mention` under Bot Events
+
+7. Create a `.env` file with both tokens:
+```env
+# API Server settings
+OPENAI_API_KEY=your_openai_api_key
+
+# Slack Bot settings
+SLACK_BOT_TOKEN=xoxb-your-bot-token    # From OAuth & Permissions
+SLACK_APP_TOKEN=xapp-your-app-token    # From Socket Mode
+```
+
+**Important Note**: If you ever accidentally expose these tokens, immediately rotate them in your Slack App settings.
+
+## Running the System
+
+1. Start the API Server:
+```bash
+python query_api.py
+```
+The server will start on http://localhost:8000
+
+2. In a new terminal, start the Slack Bot:
+```bash
+python slack_bot.py
+```
+
+## Using the System
+
+1. Invite the bot to your channel:
+```bash
+/invite @Y
+```
 
 ## Running the Vector Database and Text Processing
 

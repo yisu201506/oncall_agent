@@ -25,8 +25,12 @@ class DataSource(ABC):
         self.collection = chroma_client.get_or_create_collection(name=collection_name)
 
     @abstractmethod
-    def fetch_messages(self) -> bool:
-        """Fetch messages from the data source"""
+    def fetch_messages(self) -> List[Dict[str, Any]]:
+        """
+        Fetch messages from the data source
+        Returns:
+            List[Dict[str, Any]]: List of messages in dictionary format
+        """
         pass
 
     @abstractmethod
@@ -40,8 +44,14 @@ class DataSource(ABC):
         pass
 
     @abstractmethod
-    def process_messages(self) -> bool:
-        """Process messages and store embeddings in ChromaDB"""
+    def process_messages(self, messages: List[Dict[str, Any]]) -> bool:
+        """
+        Process messages and store embeddings in ChromaDB
+        Args:
+            messages: List of messages to process
+        Returns:
+            bool: True if processing successful, False otherwise
+        """
         pass
 
     @abstractmethod
@@ -58,11 +68,6 @@ class DataSource(ABC):
             input=text
         )
         return response.data[0].embedding
-
-    @abstractmethod
-    def get_source_messages(self) -> List[Dict[str, Any]]:
-        """Get messages from the source's storage"""
-        pass
 
     def update_collection(self, message_id: str, formatted_message: str, 
                          embedding: List[float], metadata: Dict[str, Any], 
@@ -90,7 +95,7 @@ class SlackDataSource(DataSource):
     
     def __init__(self, channel_name: str):
         super().__init__("slack")
-        self.slack_client = WebClient(token=os.environ.get('SLACK_TOKEN'))
+        self.slack_client = WebClient(token=os.environ.get('SLACK_BOT_TOKEN'))
         self.channel_name = channel_name
         self.channel_id = self._get_channel_id()
 
@@ -100,7 +105,8 @@ class SlackDataSource(DataSource):
                             if channel["name"] == self.channel_name)
         return target_channel["id"]
 
-    def fetch_messages(self) -> bool:
+    def fetch_messages(self) -> List[Dict[str, Any]]:
+        """Fetch messages from Slack and return them while also saving to file"""
         try:
             messages = self.slack_client.conversations_history(channel=self.channel_id)["messages"]
             result = []
@@ -122,14 +128,15 @@ class SlackDataSource(DataSource):
                     
                 result.append(message_data)
 
+            # Still save to file for persistence
             with open("slack_messages.json", "w") as f:
                 json.dump(result, f, indent=2)
                 
-            return True
+            return result
 
         except SlackApiError as e:
             print(f"Error fetching Slack messages: {e.response['error']}")
-            return False
+            return []
 
     def get_message_permalink(self, message_id: str) -> Optional[str]:
         try:
@@ -151,15 +158,10 @@ class SlackDataSource(DataSource):
         
         return formatted
 
-    def get_source_messages(self) -> List[Dict[str, Any]]:
-        with open("slack_messages.json", "r") as f:
-            return json.load(f)
-
-    def process_messages(self) -> bool:
+    def process_messages(self, messages: List[Dict[str, Any]]) -> bool:
         """Slack-specific message processing implementation"""
         try:
             existing_ids = set(self.collection.get()['ids'])
-            messages = self.get_source_messages()
             formatted_messages = []
             message_permalinks = []
 
@@ -210,7 +212,7 @@ class JiraDataSource(DataSource):
 
     # ... other required methods ...
 
-    def process_messages(self) -> bool:
+    def process_messages(self, messages: List[Dict[str, Any]]) -> bool:
         """Jira-specific message processing implementation"""
         try:
             # Implement Jira-specific processing logic
@@ -237,13 +239,14 @@ def main():
     
     # Step 1: Fetch messages
     print("\n1. Fetching messages...")
-    if not slack_source.fetch_messages():
+    messages = slack_source.fetch_messages()
+    if not messages:
         print("Failed to fetch messages. Aborting.")
         return
     
     # Step 2: Process messages and create embeddings
     print("\n2. Processing messages and creating embeddings...")
-    if not slack_source.process_messages():
+    if not slack_source.process_messages(messages):
         print("Failed to process messages. Aborting.")
         return
     
