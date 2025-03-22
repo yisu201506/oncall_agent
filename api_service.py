@@ -1,16 +1,17 @@
+import chromadb
+import uvicorn
+import os
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
-import chromadb
-import uvicorn
 from openai import OpenAI
-import os
+from read_messages import COLLECTION_NAME
 
 app = FastAPI(title="Vector Database API Service")
 
 # Initialize ChromaDB client
 chroma_client = chromadb.PersistentClient(path="chroma_db")
-collection = chroma_client.get_or_create_collection(name="slack_messages")
+collection = chroma_client.get_or_create_collection(name=COLLECTION_NAME)
 
 # Initialize OpenAI client
 client = OpenAI()
@@ -45,11 +46,6 @@ async def get_stats():
 async def query_messages(request: QueryRequest):
     """Query similar messages from the vector database"""
     try:
-        # Completely reinitialize ChromaDB client and collection
-        global chroma_client, collection
-        chroma_client = chromadb.PersistentClient(path="chroma_db")
-        collection = chroma_client.get_or_create_collection(name="slack_messages")
-        
         # Get embedding for query text
         response = client.embeddings.create(
             model="text-embedding-ada-002",

@@ -17,6 +17,9 @@ if not openai.api_key:
 # Initialize ChromaDB
 chroma_client = chromadb.PersistentClient(path="chroma_db")
 
+# The name of the collection/database names to use for the data source
+COLLECTION_NAME = "slack"
+
 class DataSource(ABC):
     """Abstract base class for different data sources"""
     
