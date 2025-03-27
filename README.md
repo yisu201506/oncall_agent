@@ -150,6 +150,10 @@ python read_messages.py
    python query_api.py "incident response" -n 3 --no-similarity
    ```
 
+## Future Optimization
+
+1. For now we are using the Retrieval Augmented Generation (RAG). In the future, we can support a combination of RAG with Cache Augmented Generation (CAG), i.e. after we retrieve the relevant docs, we can first process them and store the key value pairs of the attention layer, and query against it during the query steps. This way, we don't have to process the context all the time. 
+
 ## Usage
 
 [Add usage instructions here]
